@@ -1,4 +1,4 @@
-name: Build LocalVault APK
+name: Build LocalVault Safe Release APK
 
 on:
   push:
@@ -38,54 +38,150 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "ANDROID_HOME=$ANDROID_HOME"
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
-          test -n "$SDKMANAGER"
           test -x "$SDKMANAGER"
-          echo "Using $SDKMANAGER"
-          "$SDKMANAGER" --version
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Use stable API 36 for installable debug build
+      - name: Convert source to SAF-only release build
         working-directory: /tmp/localvault-src/LocalVaultNative
         shell: bash
         run: |
           set -euo pipefail
-          sed -i 's/compileSdk = 37/compileSdk = 36/' app/build.gradle.kts
-          sed -i 's/targetSdk = 37/targetSdk = 36/' app/build.gradle.kts
-          sed -i 's/compose-bom:2026.09.00/compose-bom:2025.06.00/' app/build.gradle.kts
-          sed -i 's/core-ktx:1.19.1/core-ktx:1.16.0/' app/build.gradle.kts
-          sed -i 's/activity-compose:1.13.0/activity-compose:1.10.1/' app/build.gradle.kts
-          sed -i 's/lifecycle-runtime-ktx:2.11.0/lifecycle-runtime-ktx:2.9.1/' app/build.gradle.kts
-          sed -i 's/lifecycle-viewmodel-compose:2.11.0/lifecycle-viewmodel-compose:2.9.1/' app/build.gradle.kts
-          sed -i 's/lifecycle-viewmodel-ktx:2.11.0/lifecycle-viewmodel-ktx:2.9.1/' app/build.gradle.kts
-          grep -E 'compileSdk|targetSdk|compose-bom|core-ktx|activity-compose|lifecycle-' app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          m = manifest.read_text()
+          m = re.sub(
+              r'\n\s*<!-- LocalVault\'s private/sideloaded full-access mode\..*?-->\s*\n\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*\n',
+              '\n',
+              m,
+              flags=re.S,
+          )
+          m = re.sub(
+              r'\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*',
+              '\n',
+              m,
+          )
+          manifest.write_text(m)
+
+          vm = Path("app/src/main/java/com/localvault/filemanager/FileManagerViewModel.kt")
+          v = vm.read_text()
+          v = re.sub(
+              r'fun canUseDirectStorage\(\): Boolean =\s*\n?\s*Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.R && Environment\.isExternalStorageManager\(\)',
+              'fun canUseDirectStorage(): Boolean = false',
+              v,
+          )
+          vm.write_text(v)
+
+          screen = Path("app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt")
+          s = screen.read_text()
+          start = s.index('@Composable\nprivate fun AccessScreen(')
+          end = s.index('@Composable\nprivate fun AccessCard(', start)
+          replacement = '''@Composable
+          private fun AccessScreen(onRequestFullAccess: () -> Unit, onChooseFolder: () -> Unit) {
+              Surface(Modifier.fillMaxSize()) {
+                  Column(
+                      Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                      verticalArrangement = Arrangement.Center
+                  ) {
+                      Surface(
+                          color = MaterialTheme.colorScheme.primaryContainer,
+                          shape = RoundedCornerShape(20.dp),
+                          modifier = Modifier.size(76.dp)
+                      ) {
+                          Box(contentAlignment = Alignment.Center) {
+                              Icon(Icons.Default.Folder, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                          }
+                      }
+                      Spacer(Modifier.height(20.dp))
+                      Text("LocalVault", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                      Spacer(Modifier.height(7.dp))
+                      Text(
+                          "Choose a folder to manage. LocalVault uses Android's official Storage Access Framework and does not request broad all-files access.",
+                          color = MaterialTheme.colorScheme.onSurface.copy(alpha = .7f)
+                      )
+                      Spacer(Modifier.height(28.dp))
+                      AccessCard(
+                          icon = Icons.Default.FolderOpen,
+                          title = "Choose storage folder",
+                          body = "Pick Internal storage, Download, Documents, an SD-card folder, or another location Android allows. LocalVault keeps read/write access across restarts.",
+                          button = "Choose folder",
+                          onClick = onChooseFolder,
+                      )
+                      Spacer(Modifier.height(18.dp))
+                      Text(
+                          "You stay in control: LocalVault can only access locations you explicitly select in Android's folder picker.",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f)
+                      )
+                  }
+              }
+          }
+
+          '''
+          s = s[:start] + replacement + s[end:]
+          screen.write_text(s)
+
+          gradle = Path("app/build.gradle.kts")
+          g = gradle.read_text()
+          replacements = {
+              'compileSdk = 37': 'compileSdk = 36',
+              'targetSdk = 37': 'targetSdk = 36',
+              'versionCode = 4': 'versionCode = 5',
+              'versionName = "0.4.0"': 'versionName = "0.4.1"',
+              'compose-bom:2026.09.00': 'compose-bom:2025.06.00',
+              'core-ktx:1.19.1': 'core-ktx:1.16.0',
+              'activity-compose:1.13.0': 'activity-compose:1.10.1',
+              'lifecycle-runtime-ktx:2.11.0': 'lifecycle-runtime-ktx:2.9.1',
+              'lifecycle-viewmodel-compose:2.11.0': 'lifecycle-viewmodel-compose:2.9.1',
+              'lifecycle-viewmodel-ktx:2.11.0': 'lifecycle-viewmodel-ktx:2.9.1',
+          }
+          for a, b in replacements.items():
+              g = g.replace(a, b)
+          g = g.replace(
+              'isMinifyEnabled = false\n            signingConfigs.findByName("release")?.let { signingConfig = it }',
+              'isMinifyEnabled = false\n            isDebuggable = false\n            signingConfig = signingConfigs.getByName("debug")'
+          )
+          gradle.write_text(g)
+          PY
+
+          ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
+          grep -E 'compileSdk|targetSdk|versionCode|versionName|compose-bom|core-ktx|activity-compose|lifecycle-' app/build.gradle.kts
 
       - name: Configure Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build tests and debug APK
+      - name: Run tests and build release APK
         working-directory: /tmp/localvault-src/LocalVaultNative
         shell: bash
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease --stacktrace --no-daemon
 
-      - name: Verify APK
+      - name: Verify release APK and permissions
         shell: bash
         run: |
           set -euo pipefail
-          APK=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/debug/app-debug.apk
+          APK=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$APK" | tee /tmp/localvault-permissions.txt
+          if grep -q "MANAGE_EXTERNAL_STORAGE" /tmp/localvault-permissions.txt; then
+            echo "ERROR: broad all-files permission is still present"
+            exit 1
+          fi
           sha256sum "$APK"
           ls -lh "$APK"
 
-      - name: Upload installable APK
+      - name: Upload installable safe release APK
         uses: actions/upload-artifact@v4
         with:
-          name: LocalVault-v0.4.0-debug-apk
-          path: /tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/debug/app-debug.apk
+          name: LocalVault-v0.4.1-safe-release-apk
+          path: /tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -93,7 +189,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: LocalVault-v0.4.0-test-reports
+          name: LocalVault-v0.4.1-test-reports
           path: /tmp/localvault-src/LocalVaultNative/app/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
