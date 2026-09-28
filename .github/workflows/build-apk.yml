@@ -54,7 +54,13 @@ jobs:
           set -euo pipefail
           sed -i 's/compileSdk = 37/compileSdk = 36/' app/build.gradle.kts
           sed -i 's/targetSdk = 37/targetSdk = 36/' app/build.gradle.kts
-          grep -E 'compileSdk|targetSdk' app/build.gradle.kts
+          sed -i 's/compose-bom:2026.09.00/compose-bom:2025.06.00/' app/build.gradle.kts
+          sed -i 's/core-ktx:1.19.1/core-ktx:1.16.0/' app/build.gradle.kts
+          sed -i 's/activity-compose:1.13.0/activity-compose:1.10.1/' app/build.gradle.kts
+          sed -i 's/lifecycle-runtime-ktx:2.11.0/lifecycle-runtime-ktx:2.9.1/' app/build.gradle.kts
+          sed -i 's/lifecycle-viewmodel-compose:2.11.0/lifecycle-viewmodel-compose:2.9.1/' app/build.gradle.kts
+          sed -i 's/lifecycle-viewmodel-ktx:2.11.0/lifecycle-viewmodel-ktx:2.9.1/' app/build.gradle.kts
+          grep -E 'compileSdk|targetSdk|compose-bom|core-ktx|activity-compose|lifecycle-' app/build.gradle.kts
 
       - name: Configure Gradle cache
         uses: gradle/actions/setup-gradle@v4
