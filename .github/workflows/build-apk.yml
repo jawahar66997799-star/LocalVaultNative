@@ -1,4 +1,4 @@
-name: Build LocalVault Safe Release APK
+name: Build Jawahar File v0.5 APK
 
 on:
   push:
@@ -11,22 +11,37 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
-      - name: Checkout bootstrap repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct verified LocalVault v0.4 source bundle
+      - name: Reconstruct verified base source
         shell: bash
         run: |
           set -euo pipefail
           cat payload/part*.b64 | base64 --decode > /tmp/LocalVaultNative-v0.4.0.zip
           echo "99fd75ecf4df58c60988e7046fde99eab0a3076eee8a3570c0a33674dabc85a3  /tmp/LocalVaultNative-v0.4.0.zip" | sha256sum -c -
+          rm -rf /tmp/localvault-src
           mkdir -p /tmp/localvault-src
           unzip -q /tmp/LocalVaultNative-v0.4.0.zip -d /tmp/localvault-src
-          test -f /tmp/localvault-src/LocalVaultNative/settings.gradle.kts
           test -f /tmp/localvault-src/LocalVaultNative/app/build.gradle.kts
+
+      - name: Prepare Jawahar File v0.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/prepare_jawahar_file_v050.py
+          cd /tmp/localvault-src/LocalVaultNative
+          ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
+          grep -q 'android:label="Jawahar File"' app/src/main/AndroidManifest.xml
+          grep -q 'applicationId = "com.jawahar.file"' app/build.gradle.kts
+          grep -q 'versionName = "0.5.0"' app/build.gradle.kts
+          grep -q 'BiometricPrompt' app/src/main/java/com/localvault/filemanager/MainActivity.kt
+          grep -q 'FLAG_SECURE' app/src/main/java/com/localvault/filemanager/MainActivity.kt
+          grep -q 'collectAsStateWithLifecycle' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
+          grep -q 'ThumbnailCache' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -34,7 +49,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install required Android SDK packages
+      - name: Install Android SDK
         shell: bash
         run: |
           set -euo pipefail
@@ -43,153 +58,59 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Convert source to SAF-only release build
-        working-directory: /tmp/localvault-src/LocalVaultNative
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          manifest = Path("app/src/main/AndroidManifest.xml")
-          m = manifest.read_text()
-          m = re.sub(
-              r'\n\s*<!-- LocalVault\'s private/sideloaded full-access mode\..*?-->\s*\n\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*\n',
-              '\n',
-              m,
-              flags=re.S,
-          )
-          m = re.sub(
-              r'\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*',
-              '\n',
-              m,
-          )
-          manifest.write_text(m)
-
-          vm = Path("app/src/main/java/com/localvault/filemanager/FileManagerViewModel.kt")
-          v = vm.read_text()
-          v = re.sub(
-              r'fun canUseDirectStorage\(\): Boolean =\s*\n?\s*Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.R && Environment\.isExternalStorageManager\(\)',
-              'fun canUseDirectStorage(): Boolean = false',
-              v,
-          )
-          vm.write_text(v)
-
-          screen = Path("app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt")
-          s = screen.read_text()
-          start = s.index('@Composable\nprivate fun AccessScreen(')
-          end = s.index('@Composable\nprivate fun AccessCard(', start)
-          replacement = '''@Composable
-          private fun AccessScreen(onRequestFullAccess: () -> Unit, onChooseFolder: () -> Unit) {
-              Surface(Modifier.fillMaxSize()) {
-                  Column(
-                      Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-                      verticalArrangement = Arrangement.Center
-                  ) {
-                      Surface(
-                          color = MaterialTheme.colorScheme.primaryContainer,
-                          shape = RoundedCornerShape(20.dp),
-                          modifier = Modifier.size(76.dp)
-                      ) {
-                          Box(contentAlignment = Alignment.Center) {
-                              Icon(Icons.Default.Folder, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                          }
-                      }
-                      Spacer(Modifier.height(20.dp))
-                      Text("LocalVault", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-                      Spacer(Modifier.height(7.dp))
-                      Text(
-                          "Choose a folder to manage. LocalVault uses Android's official Storage Access Framework and does not request broad all-files access.",
-                          color = MaterialTheme.colorScheme.onSurface.copy(alpha = .7f)
-                      )
-                      Spacer(Modifier.height(28.dp))
-                      AccessCard(
-                          icon = Icons.Default.FolderOpen,
-                          title = "Choose storage folder",
-                          body = "Pick Internal storage, Download, Documents, an SD-card folder, or another location Android allows. LocalVault keeps read/write access across restarts.",
-                          button = "Choose folder",
-                          onClick = onChooseFolder,
-                      )
-                      Spacer(Modifier.height(18.dp))
-                      Text(
-                          "You stay in control: LocalVault can only access locations you explicitly select in Android's folder picker.",
-                          style = MaterialTheme.typography.bodySmall,
-                          color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f)
-                      )
-                  }
-              }
-          }
-
-          '''
-          s = s[:start] + replacement + s[end:]
-          screen.write_text(s)
-
-          gradle = Path("app/build.gradle.kts")
-          g = gradle.read_text()
-          replacements = {
-              'compileSdk = 37': 'compileSdk = 36',
-              'targetSdk = 37': 'targetSdk = 36',
-              'versionCode = 4': 'versionCode = 5',
-              'versionName = "0.4.0"': 'versionName = "0.4.1"',
-              'compose-bom:2026.09.00': 'compose-bom:2025.06.00',
-              'core-ktx:1.19.1': 'core-ktx:1.16.0',
-              'activity-compose:1.13.0': 'activity-compose:1.10.1',
-              'lifecycle-runtime-ktx:2.11.0': 'lifecycle-runtime-ktx:2.9.1',
-              'lifecycle-viewmodel-compose:2.11.0': 'lifecycle-viewmodel-compose:2.9.1',
-              'lifecycle-viewmodel-ktx:2.11.0': 'lifecycle-viewmodel-ktx:2.9.1',
-          }
-          for a, b in replacements.items():
-              g = g.replace(a, b)
-          g = g.replace(
-              'isMinifyEnabled = false\n            signingConfigs.findByName("release")?.let { signingConfig = it }',
-              'isMinifyEnabled = false\n            isDebuggable = false\n            signingConfig = signingConfigs.getByName("debug")'
-          )
-          gradle.write_text(g)
-          PY
-
-          ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
-          grep -E 'compileSdk|targetSdk|versionCode|versionName|compose-bom|core-ktx|activity-compose|lifecycle-' app/build.gradle.kts
-
       - name: Configure Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run tests and build release APK
+      - name: Unit tests, Android lint, and release build
         working-directory: /tmp/localvault-src/LocalVaultNative
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleRelease --stacktrace --no-daemon
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --stacktrace --no-daemon
 
-      - name: Verify release APK and permissions
+      - name: Verify APK identity, privacy and signature
         shell: bash
         run: |
           set -euo pipefail
-          APK=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$APK" | tee /tmp/localvault-permissions.txt
-          if grep -q "MANAGE_EXTERNAL_STORAGE" /tmp/localvault-permissions.txt; then
-            echo "ERROR: broad all-files permission is still present"
+          SRC=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
+          OUT=/tmp/Jawahar-File-v0.5.0.apk
+          test -s "$SRC"
+          cp "$SRC" "$OUT"
+
+          unzip -t "$OUT" >/dev/null
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$OUT"
+
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$OUT" | tee /tmp/jawahar-permissions.txt
+          if grep -q "MANAGE_EXTERNAL_STORAGE" /tmp/jawahar-permissions.txt; then
+            echo "ERROR: broad storage permission is present"
             exit 1
           fi
-          sha256sum "$APK"
-          ls -lh "$APK"
 
-      - name: Upload installable safe release APK
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$OUT" | tee /tmp/jawahar-badging.txt
+          grep -q "package: name='com.jawahar.file'" /tmp/jawahar-badging.txt
+          grep -q "application-label:'Jawahar File'" /tmp/jawahar-badging.txt
+
+          sha256sum "$OUT"
+          ls -lh "$OUT"
+
+      - name: Upload installable Jawahar File APK
         uses: actions/upload-artifact@v4
         with:
-          name: LocalVault-v0.4.1-safe-release-apk
-          path: /tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
+          name: Jawahar-File-v0.5.0-secure-release-apk
+          path: /tmp/Jawahar-File-v0.5.0.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload unit-test reports
+      - name: Upload lint and test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: LocalVault-v0.4.1-test-reports
-          path: /tmp/localvault-src/LocalVaultNative/app/build/reports/tests/
+          name: Jawahar-File-v0.5.0-quality-reports
+          path: |
+            /tmp/localvault-src/LocalVaultNative/app/build/reports/tests/
+            /tmp/localvault-src/LocalVaultNative/app/build/reports/lint-results-release.html
+            /tmp/localvault-src/LocalVaultNative/app/build/reports/lint-results-release.txt
           if-no-files-found: ignore
           retention-days: 14
