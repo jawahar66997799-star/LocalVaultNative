@@ -29,7 +29,7 @@ receiver = '''
 
 '''
 if "UninstallProtectionReceiver" not in m:
-    m = m.replace("        <provider\\n", receiver + "        <provider\\n")
+    m = m.replace("\n        <provider\n", receiver + "\n        <provider\n")
 manifest.write_text(m)
 
 values = root / "app/src/main/res/values"
@@ -531,11 +531,11 @@ s = s.replace("Jawahar File", "Jawahar file")
 
 if "uninstallProtectionEnabled: Boolean" not in s:
     s = s.replace(
-        "    onImportFiles: () -> Unit,\\n)",
-        "    onImportFiles: () -> Unit,\\n"
-        "    uninstallProtectionEnabled: Boolean = false,\\n"
-        "    onEnableUninstallProtection: () -> Unit = {},\\n"
-        "    onDisableUninstallProtection: () -> Unit = {},\\n"
+        "    onImportFiles: () -> Unit,\n)",
+        "    onImportFiles: () -> Unit,\n"
+        "    uninstallProtectionEnabled: Boolean = false,\n"
+        "    onEnableUninstallProtection: () -> Unit = {},\n"
+        "    onDisableUninstallProtection: () -> Unit = {},\n"
         ")"
     )
 
