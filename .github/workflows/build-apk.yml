@@ -36,17 +36,32 @@ jobs:
           python3 ci/prepare_jawahar_file_v051.py
           cd /tmp/localvault-src/LocalVaultNative
 
-          ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
-          grep -q 'android:label="Jawahar file"' app/src/main/AndroidManifest.xml
-          grep -q 'applicationId = "com.jawahar.file"' app/build.gradle.kts
-          grep -q 'versionName = "0.5.1"' app/build.gradle.kts
-          grep -q 'UninstallProtectionReceiver' app/src/main/AndroidManifest.xml
-          grep -q 'BiometricPrompt' app/src/main/java/com/localvault/filemanager/MainActivity.kt
-          grep -q 'FLAG_SECURE' app/src/main/java/com/localvault/filemanager/MainActivity.kt
-          grep -q 'authenticateFresh' app/src/main/java/com/localvault/filemanager/MainActivity.kt
-          grep -q 'collectAsStateWithLifecycle' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
-          grep -q 'ThumbnailCache' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
-          grep -q 'Optional Android uninstall protection' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path(".")
+          manifest = (root / "app/src/main/AndroidManifest.xml").read_text()
+          gradle = (root / "app/build.gradle.kts").read_text()
+          main = (root / "app/src/main/java/com/localvault/filemanager/MainActivity.kt").read_text()
+          screen = (root / "app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt").read_text()
+
+          checks = {
+              "no broad storage permission": "MANAGE_EXTERNAL_STORAGE" not in manifest,
+              "exact app label": 'android:label="Jawahar file"' in manifest,
+              "package id": 'applicationId = "com.jawahar.file"' in gradle,
+              "v0.5.1": 'versionName = "0.5.1"' in gradle,
+              "device admin receiver": "UninstallProtectionReceiver" in manifest,
+              "biometric gate": "BiometricPrompt" in main,
+              "screen privacy": "FLAG_SECURE" in main,
+              "fresh sensitive-action auth": "authenticateFresh" in main,
+              "lifecycle state": "collectAsStateWithLifecycle" in screen,
+              "thumbnail cache": "ThumbnailCache" in screen,
+          }
+
+          for label, ok in checks.items():
+              print(f"{label}: {'PASS' if ok else 'FAIL'}")
+              if not ok:
+                  raise SystemExit(1)
+          PY
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
