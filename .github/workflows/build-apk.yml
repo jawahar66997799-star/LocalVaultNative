@@ -45,7 +45,16 @@ jobs:
           echo "Using $SDKMANAGER"
           "$SDKMANAGER" --version
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Use stable API 36 for installable debug build
+        working-directory: /tmp/localvault-src/LocalVaultNative
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/compileSdk = 37/compileSdk = 36/' app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' app/build.gradle.kts
+          grep -E 'compileSdk|targetSdk' app/build.gradle.kts
 
       - name: Configure Gradle cache
         uses: gradle/actions/setup-gradle@v4
