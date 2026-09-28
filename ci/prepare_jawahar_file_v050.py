@@ -41,7 +41,7 @@ m = re.sub(
     r'\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*',
     '\n', m,
 )
-m = m.replace('android:label="LocalVault"', 'android:label="Jawahar File"')
+m = m.replace('android:label="LocalVault"', 'android:label="@string/app_name"')
 m = m.replace(
     'android:supportsRtl="true"',
     'android:supportsRtl="true"\n        android:usesCleartextTraffic="false"'
@@ -57,6 +57,26 @@ values = root / "app/src/main/res/values"
 <resources>
     <string name="app_name">Jawahar File</string>
 </resources>
+""")
+
+xml_dir = root / "app/src/main/res/xml"
+(xml_dir / "data_extraction_rules.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
 """)
 
 # Strong system-authentication gate
@@ -327,7 +347,7 @@ v = re.sub(
     'fun canUseDirectStorage(): Boolean = false',
     v,
 )
-vm.write_text(v)
+v = v.replace('while (list.size > MAX_RECENT) list.removeLast()', 'while (list.size > MAX_RECENT) list.removeAt(list.lastIndex)')\nvm.write_text(v)
 
 # Lifecycle-safe state and rendering optimizations.
 screen = root / "app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt"
@@ -472,6 +492,13 @@ new = '''    if (isImage && uri != null) {
         }'''
 s = s.replace(old, new)
 screen.write_text(s)
+
+file_utils = root / "app/src/main/java/com/localvault/filemanager/util/FileUtils.kt"
+fu = file_utils.read_text()
+if "import java.util.Locale" not in fu:
+    fu = fu.replace("package com.localvault.filemanager.util\\n", "package com.localvault.filemanager.util\\n\\nimport java.util.Locale\\n")
+fu = fu.replace('String.format("%.1f %s", value, units[group])', 'String.format(Locale.getDefault(), "%.1f %s", value, units[group])')
+file_utils.write_text(fu)
 
 trash = root / "app/src/main/java/com/localvault/filemanager/service/TrashService.kt"
 t = trash.read_text().replace(
