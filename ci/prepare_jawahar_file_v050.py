@@ -495,9 +495,7 @@ screen.write_text(s)
 
 file_utils = root / "app/src/main/java/com/localvault/filemanager/util/FileUtils.kt"
 fu = file_utils.read_text()
-if "import java.util.Locale" not in fu:
-    fu = fu.replace("package com.localvault.filemanager.util\\n", "package com.localvault.filemanager.util\\n\\nimport java.util.Locale\\n")
-fu = fu.replace('String.format("%.1f %s", value, units[group])', 'String.format(Locale.getDefault(), "%.1f %s", value, units[group])')
+fu = fu.replace('String.format("%.1f %s", value, units[group])', 'String.format(java.util.Locale.getDefault(), "%.1f %s", value, units[group])')
 file_utils.write_text(fu)
 
 trash = root / "app/src/main/java/com/localvault/filemanager/service/TrashService.kt"
