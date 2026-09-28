@@ -44,11 +44,10 @@ m = re.sub(
 m = m.replace('android:label="LocalVault"', 'android:label="@string/app_name"')
 m = m.replace(
     'android:supportsRtl="true"',
-    'android:supportsRtl="true"\n        android:usesCleartextTraffic="false"'
-)
-m = m.replace(
-    'android:exported="true">\n            <intent-filter>',
-    'android:exported="true"\n            android:showWhenLocked="false">\n            <intent-filter>'
+    'android:supportsRtl="true"\n'
+    '        android:usesCleartextTraffic="false"\n'
+    '        android:fullBackupContent="false"\n'
+    '        android:dataExtractionRules="@xml/data_extraction_rules"'
 )
 manifest.write_text(m)
 
@@ -347,7 +346,8 @@ v = re.sub(
     'fun canUseDirectStorage(): Boolean = false',
     v,
 )
-v = v.replace('while (list.size > MAX_RECENT) list.removeLast()', 'while (list.size > MAX_RECENT) list.removeAt(list.lastIndex)')\nvm.write_text(v)
+v = v.replace('while (list.size > MAX_RECENT) list.removeLast()', 'while (list.size > MAX_RECENT) list.removeAt(list.lastIndex)')
+vm.write_text(v)
 
 # Lifecycle-safe state and rendering optimizations.
 screen = root / "app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt"
