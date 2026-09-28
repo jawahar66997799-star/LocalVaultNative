@@ -41,7 +41,7 @@ m = re.sub(
     r'\s*<uses-permission android:name="android\.permission\.MANAGE_EXTERNAL_STORAGE"\s*/>\s*',
     '\n', m,
 )
-m = m.replace('android:label="LocalVault"', 'android:label="@string/app_name"')
+m = m.replace('android:label="LocalVault"', 'android:label="Jawahar File"')
 m = m.replace(
     'android:supportsRtl="true"',
     'android:supportsRtl="true"\n'
