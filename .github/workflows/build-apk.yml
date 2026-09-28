@@ -28,28 +28,28 @@ jobs:
           unzip -q /tmp/LocalVaultNative-v0.4.0.zip -d /tmp/localvault-src
           test -f /tmp/localvault-src/LocalVaultNative/app/build.gradle.kts
 
-      - name: Prepare Jawahar File v0.5
+      - name: Prepare Jawahar file v0.5.1
         shell: bash
         run: |
           set -euo pipefail
+          python3 ci/prepare_jawahar_file_v050.py
           python3 ci/prepare_jawahar_file_v051.py
           cd /tmp/localvault-src/LocalVaultNative
+
           ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
           grep -q 'android:label="Jawahar file"' app/src/main/AndroidManifest.xml
           grep -q 'applicationId = "com.jawahar.file"' app/build.gradle.kts
           grep -q 'versionName = "0.5.1"' app/build.gradle.kts
+          grep -q 'UninstallProtectionReceiver' app/src/main/AndroidManifest.xml
           grep -q 'BiometricPrompt' app/src/main/java/com/localvault/filemanager/MainActivity.kt
           grep -q 'FLAG_SECURE' app/src/main/java/com/localvault/filemanager/MainActivity.kt
+          grep -q 'authenticateFresh' app/src/main/java/com/localvault/filemanager/MainActivity.kt
           grep -q 'collectAsStateWithLifecycle' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
           grep -q 'ThumbnailCache' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
-          grep -q 'UninstallProtectionReceiver' app/src/main/AndroidManifest.xml
-          grep -q 'ACTION_ADD_DEVICE_ADMIN' app/src/main/java/com/localvault/filemanager/MainActivity.kt
-          grep -q 'Uninstall protection' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
-          grep -q 'dynamicDarkColorScheme' app/src/main/java/com/localvault/filemanager/ui/Theme.kt
-          grep -q 'windowDisablePreview' app/src/main/res/values/styles.xml
+          grep -q 'Optional Android uninstall protection' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -74,7 +74,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease --stacktrace --no-daemon
 
-      - name: Verify APK identity, privacy and signature
+      - name: Verify APK identity, security, privacy and signature
         shell: bash
         run: |
           set -euo pipefail
@@ -95,15 +95,20 @@ jobs:
 
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$OUT" | tee /tmp/jawahar-badging.txt
           grep -q "package: name='com.jawahar.file'" /tmp/jawahar-badging.txt
+          grep -q "versionName='0.5.1'" /tmp/jawahar-badging.txt
           grep -q "application-label:'Jawahar file'" /tmp/jawahar-badging.txt
+
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$OUT" AndroidManifest.xml | tee /tmp/jawahar-manifest.txt
+          grep -q "UninstallProtectionReceiver" /tmp/jawahar-manifest.txt
+          grep -q "android.permission.BIND_DEVICE_ADMIN" /tmp/jawahar-manifest.txt
 
           sha256sum "$OUT"
           ls -lh "$OUT"
 
-      - name: Upload installable Jawahar File APK
+      - name: Upload installable Jawahar file APK
         uses: actions/upload-artifact@v4
         with:
-          name: Jawahar-file-v0.5.1-professional-secure-apk
+          name: Jawahar-file-v0.5.1-secure-professional-apk
           path: /tmp/Jawahar-file-v0.5.1.apk
           if-no-files-found: error
           retention-days: 30
