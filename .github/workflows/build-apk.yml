@@ -1,0 +1,80 @@
+name: Build LocalVault APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout bootstrap repository
+        uses: actions/checkout@v4
+
+      - name: Reconstruct verified LocalVault v0.4 source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/part*.b64 | base64 --decode > /tmp/LocalVaultNative-v0.4.0.zip
+          echo "99fd75ecf4df58c60988e7046fde99eab0a3076eee8a3570c0a33674dabc85a3  /tmp/LocalVaultNative-v0.4.0.zip" | sha256sum -c -
+          mkdir -p /tmp/localvault-src
+          unzip -q /tmp/LocalVaultNative-v0.4.0.zip -d /tmp/localvault-src
+          test -f /tmp/localvault-src/LocalVaultNative/settings.gradle.kts
+          test -f /tmp/localvault-src/LocalVaultNative/app/build.gradle.kts
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Configure Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build tests and debug APK
+        working-directory: /tmp/localvault-src/LocalVaultNative
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          sha256sum "$APK"
+          ls -lh "$APK"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalVault-v0.4.0-debug-apk
+          path: /tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalVault-v0.4.0-test-reports
+          path: /tmp/localvault-src/LocalVaultNative/app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
