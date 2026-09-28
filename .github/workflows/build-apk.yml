@@ -1,4 +1,4 @@
-name: Build Jawahar File v0.5 APK
+name: Build Jawahar file v0.5.1 APK
 
 on:
   push:
@@ -32,16 +32,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ci/prepare_jawahar_file_v050.py
+          python3 ci/prepare_jawahar_file_v051.py
           cd /tmp/localvault-src/LocalVaultNative
           ! grep -R "MANAGE_EXTERNAL_STORAGE" app/src/main/AndroidManifest.xml
-          grep -q 'android:label="Jawahar File"' app/src/main/AndroidManifest.xml
+          grep -q 'android:label="Jawahar file"' app/src/main/AndroidManifest.xml
           grep -q 'applicationId = "com.jawahar.file"' app/build.gradle.kts
-          grep -q 'versionName = "0.5.0"' app/build.gradle.kts
+          grep -q 'versionName = "0.5.1"' app/build.gradle.kts
           grep -q 'BiometricPrompt' app/src/main/java/com/localvault/filemanager/MainActivity.kt
           grep -q 'FLAG_SECURE' app/src/main/java/com/localvault/filemanager/MainActivity.kt
           grep -q 'collectAsStateWithLifecycle' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
           grep -q 'ThumbnailCache' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
+          grep -q 'UninstallProtectionReceiver' app/src/main/AndroidManifest.xml
+          grep -q 'ACTION_ADD_DEVICE_ADMIN' app/src/main/java/com/localvault/filemanager/MainActivity.kt
+          grep -q 'Uninstall protection' app/src/main/java/com/localvault/filemanager/ui/FileManagerScreen.kt
+          grep -q 'dynamicDarkColorScheme' app/src/main/java/com/localvault/filemanager/ui/Theme.kt
+          grep -q 'windowDisablePreview' app/src/main/res/values/styles.xml
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -74,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC=/tmp/localvault-src/LocalVaultNative/app/build/outputs/apk/release/app-release.apk
-          OUT=/tmp/Jawahar-File-v0.5.0.apk
+          OUT=/tmp/Jawahar-file-v0.5.1.apk
           test -s "$SRC"
           cp "$SRC" "$OUT"
 
@@ -90,7 +95,7 @@ jobs:
 
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$OUT" | tee /tmp/jawahar-badging.txt
           grep -q "package: name='com.jawahar.file'" /tmp/jawahar-badging.txt
-          grep -q "application-label:'Jawahar File'" /tmp/jawahar-badging.txt
+          grep -q "application-label:'Jawahar file'" /tmp/jawahar-badging.txt
 
           sha256sum "$OUT"
           ls -lh "$OUT"
@@ -98,8 +103,8 @@ jobs:
       - name: Upload installable Jawahar File APK
         uses: actions/upload-artifact@v4
         with:
-          name: Jawahar-File-v0.5.0-secure-release-apk
-          path: /tmp/Jawahar-File-v0.5.0.apk
+          name: Jawahar-file-v0.5.1-professional-secure-apk
+          path: /tmp/Jawahar-file-v0.5.1.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -107,7 +112,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Jawahar-File-v0.5.0-quality-reports
+          name: Jawahar-file-v0.5.1-quality-reports
           path: |
             /tmp/localvault-src/LocalVaultNative/app/build/reports/tests/
             /tmp/localvault-src/LocalVaultNative/app/build/reports/lint-results-release.html
