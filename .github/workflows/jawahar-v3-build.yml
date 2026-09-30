@@ -26,6 +26,25 @@ jobs:
           grep -q "kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api" /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build.gradle
           grep -q "JAW-hzGeVNMgUwMO1oGMT2bBQcEBEvuLHwah4a15MEKQuSc" /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build.gradle
 
+      - name: Harden final WebRTC drain before close
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("/tmp/jss-v3/JawaharSecureShare-v1/android/core/src/main/java/com/jawahar/secure/core/DirectTransfer.java")
+          s=p.read_text()
+          old1='text(dc,"DONE:"+done);Thread.sleep(150);return done==total;'
+          new1='text(dc,"DONE:"+done);long drain=System.currentTimeMillis()+15000;while(dc.bufferedAmount()>0&&dc.state()==DataChannel.State.OPEN&&System.currentTimeMillis()<drain)Thread.sleep(5);return done==total&&dc.bufferedAmount()==0;'
+          old2='text(dc,"DONE:"+out.written);Thread.sleep(120);return true;'
+          new2='text(dc,"DONE:"+out.written);long drain=System.currentTimeMillis()+15000;while(dc.bufferedAmount()>0&&dc.state()==DataChannel.State.OPEN&&System.currentTimeMillis()<drain)Thread.sleep(5);return dc.bufferedAmount()==0;'
+          assert s.count(old1)==1 and s.count(old2)==1
+          s=s.replace(old1,new1).replace(old2,new2)
+          p.write_text(s)
+          assert s.count('long drain=System.currentTimeMillis()+15000')==2
+          PY
+          echo "ff3db4472d69759aad4d850d0723c1a57a24cf55f91ff24110297fd296f3c626  /tmp/jss-v3/JawaharSecureShare-v1/android/core/src/main/java/com/jawahar/secure/core/DirectTransfer.java" | sha256sum -c -
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -54,12 +73,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/out
-          cp /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/out/Jawahar-Owner-v3-unsigned.apk
-          cp /tmp/jss-v3/JawaharSecureShare-v1/android/friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/out/Jawahar-v3-unsigned.apk
-          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/out/apksigner.jar
-          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" /tmp/out/zipalign
-          cp "$ANDROID_HOME/build-tools/35.0.0/aapt" /tmp/out/aapt
-          chmod +x /tmp/out/zipalign /tmp/out/aapt
+          OWNER=/tmp/jss-v3/JawaharSecureShare-v1/android/owner/build/outputs/apk/release/owner-release-unsigned.apk
+          FRIEND=/tmp/jss-v3/JawaharSecureShare-v1/android/friend/build/outputs/apk/release/friend-release-unsigned.apk
+          cp "$OWNER" /tmp/out/Jawahar-Owner-v3-unsigned.apk
+          cp "$FRIEND" /tmp/out/Jawahar-v3-unsigned.apk
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          cp "$BT/lib/apksigner.jar" /tmp/out/apksigner.jar
+          cp "$BT/zipalign" /tmp/out/zipalign
+          cp "$BT/aapt" /tmp/out/aapt
+          LIBCPP="$(find "$BT" -name 'libc++.so' -type f | head -1 || true)"
+          if [ -n "$LIBCPP" ]; then cp "$LIBCPP" /tmp/out/libc++.so; fi
+          "$BT/aapt" dump badging "$OWNER" > /tmp/out/OWNER_BADGING.txt
+          "$BT/aapt" dump badging "$FRIEND" > /tmp/out/FRIEND_BADGING.txt
+          "$BT/aapt" dump permissions "$OWNER" > /tmp/out/OWNER_PERMISSIONS.txt
+          "$BT/aapt" dump permissions "$FRIEND" > /tmp/out/FRIEND_PERMISSIONS.txt
           sha256sum /tmp/out/Jawahar-Owner-v3-unsigned.apk /tmp/out/Jawahar-v3-unsigned.apk > /tmp/out/UNSIGNED-SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
