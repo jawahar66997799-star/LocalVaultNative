@@ -1,0 +1,70 @@
+name: Jawahar v3 Direct Fast Release
+on:
+  push:
+    branches: [ jawahar-v3-direct-fast ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct and verify exact v3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jss-v3-final/chunks/part*.b64 | base64 --decode > /tmp/jss-v3.zip
+          echo "a4c6c5828f1265ec8bf627e9ae90be79ae81896a69049366ef5750df4211672a  /tmp/jss-v3.zip" | sha256sum -c -
+          rm -rf /tmp/jss-v3
+          mkdir -p /tmp/jss-v3
+          unzip -q /tmp/jss-v3.zip -d /tmp/jss-v3
+          test -f /tmp/jss-v3/JawaharSecureShare-v1/android/settings.gradle
+          grep -q "io.github.webrtc-sdk:android:150.7871.01" /tmp/jss-v3/JawaharSecureShare-v1/android/core/build.gradle
+          grep -q "kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api" /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build.gradle
+          grep -q "JAW-hzGeVNMgUwMO1oGMT2bBQcEBEvuLHwah4a15MEKQuSc" /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build.gradle
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android SDK
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build v3 release APKs
+        working-directory: /tmp/jss-v3/JawaharSecureShare-v1/android
+        shell: bash
+        run: gradle --no-daemon :owner:assembleRelease :friend:assembleRelease --stacktrace
+
+      - name: Collect unsigned APKs and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out
+          cp /tmp/jss-v3/JawaharSecureShare-v1/android/owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/out/Jawahar-Owner-v3-unsigned.apk
+          cp /tmp/jss-v3/JawaharSecureShare-v1/android/friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/out/Jawahar-v3-unsigned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/out/apksigner.jar
+          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" /tmp/out/zipalign
+          cp "$ANDROID_HOME/build-tools/35.0.0/aapt" /tmp/out/aapt
+          chmod +x /tmp/out/zipalign /tmp/out/aapt
+          sha256sum /tmp/out/Jawahar-Owner-v3-unsigned.apk /tmp/out/Jawahar-v3-unsigned.apk > /tmp/out/UNSIGNED-SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-v3-direct-unsigned
+          path: /tmp/out/*
+          retention-days: 7
+          if-no-files-found: error
