@@ -1,0 +1,53 @@
+name: Build Jawahar Secure Share unsigned release
+on:
+  push:
+    branches:
+      - jawahar-secure-share-build-20260930
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss-source.zip
+          mkdir -p /tmp/jss
+          unzip -q -o /tmp/jss-source.zip -d /tmp/jss
+          test -f /tmp/jss/JawaharSecureShare-v1/android/settings.gradle
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build unsigned releases
+        working-directory: /tmp/jss/JawaharSecureShare-v1/android
+        run: gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://REPLACE-ME.workers.dev --stacktrace
+      - name: Collect releases and signer tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out
+          cp owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/out/Jawahar-Owner-release-unsigned.apk
+          cp friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/out/Jawahar-release-unsigned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/out/apksigner.jar
+          sha256sum /tmp/out/* > /tmp/out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-Secure-Share-unsigned-release
+          path: /tmp/out/*
+          retention-days: 7
+          if-no-files-found: error
