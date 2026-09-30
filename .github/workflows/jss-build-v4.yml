@@ -1,0 +1,44 @@
+name: Build Jawahar Secure Share v4
+on:
+  push:
+    branches:
+      - jawahar-secure-share-build-20260930
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct
+        run: |
+          cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss.zip
+          mkdir -p /tmp/jss
+          unzip -q -o /tmp/jss.zip -d /tmp/jss
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: SDK packages
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - name: Compile
+        working-directory: /tmp/jss/JawaharSecureShare-v1/android
+        run: gradle --no-daemon :owner:assembleDebug :friend:assembleDebug -PJAWAHAR_BACKEND_URL=https://REPLACE-ME.workers.dev
+      - name: Package
+        run: |
+          mkdir -p /tmp/out
+          cp /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/debug/owner-debug.apk /tmp/out/Jawahar-Owner.apk
+          cp /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/debug/friend-debug.apk /tmp/out/Jawahar.apk
+          sha256sum /tmp/out/*.apk > /tmp/out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-Secure-Share-v4-apks
+          path: /tmp/out/*
