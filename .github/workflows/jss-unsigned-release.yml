@@ -17,8 +17,9 @@ jobs:
         run: |
           set -euo pipefail
           cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss-source.zip
+          rm -rf /tmp/jss
           mkdir -p /tmp/jss
-          unzip -q -o /tmp/jss-source.zip -d /tmp/jss
+          unzip -q /tmp/jss-source.zip -d /tmp/jss
           test -f /tmp/jss/JawaharSecureShare-v1/android/settings.gradle
       - uses: actions/setup-java@v5
         with:
@@ -35,14 +36,14 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Build unsigned releases
         working-directory: /tmp/jss/JawaharSecureShare-v1/android
-        run: gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://REPLACE-ME.workers.dev --stacktrace
+        run: gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api --stacktrace
       - name: Collect releases and signer tool
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/out
-          cp owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/out/Jawahar-Owner-release-unsigned.apk
-          cp friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/out/Jawahar-release-unsigned.apk
+          cp /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/out/Jawahar-Owner-release-unsigned.apk
+          cp /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/out/Jawahar-release-unsigned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/out/apksigner.jar
           sha256sum /tmp/out/* > /tmp/out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
