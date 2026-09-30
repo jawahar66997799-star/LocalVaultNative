@@ -1,0 +1,49 @@
+name: Build Jawahar Secure Share stable
+on:
+  push:
+    branches:
+      - jawahar-secure-share-build-20260930
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and normalize SDK
+        shell: bash
+        run: |
+          cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss.zip
+          mkdir -p /tmp/jss
+          unzip -q -o /tmp/jss.zip -d /tmp/jss
+          sed -i 's/compileSdk 37/compileSdk 36/g; s/targetSdk 37/targetSdk 36/g' /tmp/jss/JawaharSecureShare-v1/android/core/build.gradle /tmp/jss/JawaharSecureShare-v1/android/owner/build.gradle /tmp/jss/JawaharSecureShare-v1/android/friend/build.gradle
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Compile
+        working-directory: /tmp/jss/JawaharSecureShare-v1/android
+        run: gradle --no-daemon :owner:assembleDebug :friend:assembleDebug -PJAWAHAR_BACKEND_URL=https://REPLACE-ME.workers.dev --stacktrace
+      - name: Package
+        run: |
+          mkdir -p /tmp/out
+          cp /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/debug/owner-debug.apk /tmp/out/Jawahar-Owner.apk
+          cp /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/debug/friend-debug.apk /tmp/out/Jawahar.apk
+          apksigner verify --verbose --print-certs /tmp/out/Jawahar-Owner.apk
+          apksigner verify --verbose --print-certs /tmp/out/Jawahar.apk
+          sha256sum /tmp/out/*.apk > /tmp/out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-Secure-Share-stable-apks
+          path: /tmp/out/*
+          retention-days: 7
