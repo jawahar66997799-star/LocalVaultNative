@@ -1,0 +1,67 @@
+name: Jawahar Final APKs
+on:
+  push:
+    branches: [ jawahar-secure-share-build-20260930 ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss.zip
+          rm -rf /tmp/jss
+          mkdir -p /tmp/jss
+          unzip -q /tmp/jss.zip -d /tmp/jss
+          test -f /tmp/jss/JawaharSecureShare-v1/android/settings.gradle
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build release APKs
+        working-directory: /tmp/jss/JawaharSecureShare-v1/android
+        run: gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api --stacktrace
+      - name: Sign final APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS="$(openssl rand -hex 20)"
+          keytool -genkeypair -storetype PKCS12 -keystore /tmp/release.p12 -alias release -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Jawahar Secure Share, O=Jawahar, C=IN" -storepass "$PASS" -keypass "$PASS" >/dev/null
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p /tmp/out
+          OWNER="$(find /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/release -name '*.apk' | head -1)"
+          FRIEND="$(find /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/release -name '*.apk' | head -1)"
+          "$BT/zipalign" -p -f 4 "$OWNER" /tmp/out/owner-aligned.apk
+          "$BT/zipalign" -p -f 4 "$FRIEND" /tmp/out/friend-aligned.apk
+          "$BT/apksigner" sign --ks /tmp/release.p12 --ks-key-alias release --ks-pass pass:"$PASS" --key-pass pass:"$PASS" --out /tmp/out/Jawahar-Owner.apk /tmp/out/owner-aligned.apk
+          "$BT/apksigner" sign --ks /tmp/release.p12 --ks-key-alias release --ks-pass pass:"$PASS" --key-pass pass:"$PASS" --out /tmp/out/Jawahar.apk /tmp/out/friend-aligned.apk
+          rm /tmp/out/*-aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs /tmp/out/Jawahar-Owner.apk > /tmp/out/OWNER_SIGNATURE.txt
+          "$BT/apksigner" verify --verbose --print-certs /tmp/out/Jawahar.apk > /tmp/out/FRIEND_SIGNATURE.txt
+          "$BT/aapt" dump badging /tmp/out/Jawahar-Owner.apk > /tmp/out/OWNER_BADGING.txt
+          "$BT/aapt" dump badging /tmp/out/Jawahar.apk > /tmp/out/FRIEND_BADGING.txt
+          "$BT/aapt" dump permissions /tmp/out/Jawahar-Owner.apk > /tmp/out/OWNER_PERMISSIONS.txt
+          "$BT/aapt" dump permissions /tmp/out/Jawahar.apk > /tmp/out/FRIEND_PERMISSIONS.txt
+          sha256sum /tmp/out/Jawahar-Owner.apk /tmp/out/Jawahar.apk > /tmp/out/SHA256SUMS.txt
+          unzip -t /tmp/out/Jawahar-Owner.apk >/dev/null
+          unzip -t /tmp/out/Jawahar.apk >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-FINAL-APKs
+          path: /tmp/out/*
+          retention-days: 7
+          if-no-files-found: error
