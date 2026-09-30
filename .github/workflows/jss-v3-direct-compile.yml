@@ -1,0 +1,39 @@
+name: Jawahar v3 Direct Compile
+on:
+  push:
+    branches: [ jawahar-secure-share-build-20260930 ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct staged v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jss-v3/chunks/part.* | base64 --decode > /tmp/jss-v3.zip
+          unzip -t /tmp/jss-v3.zip
+          rm -rf /tmp/jssv3 && mkdir -p /tmp/jssv3
+          unzip -q /tmp/jss-v3.zip -d /tmp/jssv3
+          find /tmp/jssv3 -name DirectRtc.java -print
+          grep -R "io.github.webrtc-sdk:android" /tmp/jssv3
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile
+        working-directory: /tmp/jssv3/JawaharSecureShare-v1/android
+        run: gradle --no-daemon :owner:assembleDebug :friend:assembleDebug --stacktrace
