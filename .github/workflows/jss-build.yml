@@ -17,26 +17,21 @@ jobs:
         run: |
           set -euo pipefail
           cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/jss-source.zip
-          rm -rf /tmp/jss
           mkdir -p /tmp/jss
-          unzip -q /tmp/jss-source.zip -d /tmp/jss
+          unzip -q -o /tmp/jss-source.zip -d /tmp/jss
           test -f /tmp/jss/JawaharSecureShare-v1/android/settings.gradle
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
       - name: Install Android SDK
         shell: bash
         run: |
-          set -euo pipefail
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
-          test -x "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          yes | /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager --licenses >/dev/null || true
+          /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
       - name: Build installable APKs
         working-directory: /tmp/jss/JawaharSecureShare-v1/android
         shell: bash
@@ -44,12 +39,11 @@ jobs:
       - name: Collect APKs
         shell: bash
         run: |
-          set -euo pipefail
           mkdir -p /tmp/out
           cp /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/debug/owner-debug.apk /tmp/out/Jawahar-Owner.apk
           cp /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/debug/friend-debug.apk /tmp/out/Jawahar.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs /tmp/out/Jawahar-Owner.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs /tmp/out/Jawahar.apk
+          /usr/local/lib/android/sdk/build-tools/36.0.0/apksigner verify --verbose --print-certs /tmp/out/Jawahar-Owner.apk
+          /usr/local/lib/android/sdk/build-tools/36.0.0/apksigner verify --verbose --print-certs /tmp/out/Jawahar.apk
           sha256sum /tmp/out/*.apk > /tmp/out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
