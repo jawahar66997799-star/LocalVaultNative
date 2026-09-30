@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat jss-v3b/chunks/part.00 jss-v3b/chunks/part.01 jss-v3b/chunks/part.02 jss-v3b/chunks/part.030 jss-v3b/chunks/part.031 jss-v3b/chunks/part.032 jss-v3b/chunks/part.04 | base64 --decode > /tmp/jss-v3.zip
+          cat jss-v3b/chunks/part.00 jss-v3b/chunks/part.01 jss-v3b/chunks/part.02 jss-v3b/chunks/part.0300 jss-v3b/chunks/part.0301 jss-v3b/chunks/part.0302 jss-v3b/chunks/part.031 jss-v3b/chunks/part.032 jss-v3b/chunks/part.04 | base64 --decode > /tmp/jss-v3.zip
           echo "f2eb4bb854068cbf22557917b435789abd9bbda8cbdcbc38ec0f0bf4c8bb4ed5  /tmp/jss-v3.zip" | sha256sum -c -
           rm -rf /tmp/jss-v3
           mkdir -p /tmp/jss-v3
