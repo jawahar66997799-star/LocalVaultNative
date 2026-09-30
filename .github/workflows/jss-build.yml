@@ -1,0 +1,56 @@
+name: Build Jawahar Secure Share APKs
+on:
+  push:
+    branches: [ jawahar-secure-share-build-20260930 ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct secure-share source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat jss-build/chunks/jss.part.* | base64 --decode > /tmp/JawaharSecureShare.zip
+          rm -rf /tmp/jss
+          mkdir -p /tmp/jss
+          unzip -q /tmp/JawaharSecureShare.zip -d /tmp/jss
+          find /tmp/jss -maxdepth 3 -type f | head
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: Build Owner and Friend release APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(find /tmp/jss -type f -path '*/android/settings.gradle' -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          cd "$ROOT"
+          gradle --no-daemon :owner:assembleRelease :friend:assembleRelease --stacktrace
+          mkdir -p /tmp/jss-out
+          cp owner/build/outputs/apk/release/owner-release-unsigned.apk /tmp/jss-out/Jawahar-Owner-unsigned.apk
+          cp friend/build/outputs/apk/release/friend-release-unsigned.apk /tmp/jss-out/Jawahar-Friend-unsigned.apk
+          sha256sum /tmp/jss-out/*.apk > /tmp/jss-out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jawahar-secure-share-apks
+          path: /tmp/jss-out/*
+          retention-days: 7
+          if-no-files-found: error
