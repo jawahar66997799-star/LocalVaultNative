@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 6b1d74e25c314bf8cf7c23a5e711080ed3e0d4da
       - name: Reconstruct source
         shell: bash
         run: |
