@@ -1,4 +1,4 @@
-name: Jawahar v3 Direct Compile
+name: Jawahar v3 Direct Release
 on:
   push:
     branches: [ jawahar-secure-share-build-20260930 ]
@@ -8,19 +8,24 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct staged v3
+      - name: Reconstruct exact v3 source
         shell: bash
         run: |
           set -euo pipefail
           cat jss-v3/chunks/part.* | base64 --decode > /tmp/jss-v3.zip
-          unzip -t /tmp/jss-v3.zip
-          rm -rf /tmp/jssv3 && mkdir -p /tmp/jssv3
+          echo "aefe6d1426674c9c44d3e0987233956ad9c841f58da0c4ce5b63053c3a00ebc0  /tmp/jss-v3.zip" | sha256sum -c -
+          unzip -t /tmp/jss-v3.zip >/dev/null
+          rm -rf /tmp/jssv3
+          mkdir -p /tmp/jssv3
           unzip -q /tmp/jss-v3.zip -d /tmp/jssv3
-          find /tmp/jssv3 -name DirectRtc.java -print
-          grep -R "io.github.webrtc-sdk:android" /tmp/jssv3
+          ROOT=/tmp/jssv3/JawaharSecureShare-v1
+          test -f "$ROOT/android/core/src/main/java/com/jawahar/secure/core/DirectTransfer.java"
+          test -f "$ROOT/android/owner/src/main/java/com/jawahar/secure/owner/OwnerTransferService.java"
+          test -f "$ROOT/android/friend/src/main/java/com/jawahar/secure/friend/FriendTransferService.java"
+          grep -q "io.github.webrtc-sdk:android:150.7871.01" "$ROOT/android/core/build.gradle"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -34,6 +39,33 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - name: Compile
+      - name: Build release APKs
         working-directory: /tmp/jssv3/JawaharSecureShare-v1/android
-        run: gradle --no-daemon :owner:assembleDebug :friend:assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api --stacktrace
+      - name: Align and collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          ROOT=/tmp/jssv3/JawaharSecureShare-v1/android
+          mkdir -p /tmp/out
+          OWNER="$(find "$ROOT/owner/build/outputs/apk/release" -name '*unsigned*.apk' | head -1)"
+          FRIEND="$(find "$ROOT/friend/build/outputs/apk/release" -name '*unsigned*.apk' | head -1)"
+          test -s "$OWNER"
+          test -s "$FRIEND"
+          "$BT/zipalign" -f -p 4 "$OWNER" /tmp/out/Jawahar-Owner-v3.0.0-aligned-unsigned.apk
+          "$BT/zipalign" -f -p 4 "$FRIEND" /tmp/out/Jawahar-v3.0.0-aligned-unsigned.apk
+          cp "$BT/lib/apksigner.jar" /tmp/out/apksigner.jar
+          "$BT/aapt" dump badging /tmp/out/Jawahar-Owner-v3.0.0-aligned-unsigned.apk > /tmp/out/OWNER_BADGING.txt
+          "$BT/aapt" dump badging /tmp/out/Jawahar-v3.0.0-aligned-unsigned.apk > /tmp/out/FRIEND_BADGING.txt
+          "$BT/aapt" dump permissions /tmp/out/Jawahar-Owner-v3.0.0-aligned-unsigned.apk > /tmp/out/OWNER_PERMISSIONS.txt
+          "$BT/aapt" dump permissions /tmp/out/Jawahar-v3.0.0-aligned-unsigned.apk > /tmp/out/FRIEND_PERMISSIONS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-v3-direct-unsigned
+          path: /tmp/out/*
+          retention-days: 7
+          if-no-files-found: error
