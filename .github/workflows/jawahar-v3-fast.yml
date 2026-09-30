@@ -1,0 +1,85 @@
+name: Jawahar v3 Fast Build
+on:
+  push:
+    branches:
+      - jawahar-secure-share-build-20260930
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout v3 branch
+        uses: actions/checkout@v4
+      - name: Checkout known-good baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 6b1d74e25c314bf8cf7c23a5e711080ed3e0d4da
+          path: baseline
+      - name: Reconstruct and verify v3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat baseline/jss-build/chunks/jss.part.* | base64 --decode > /tmp/base.zip
+          rm -rf /tmp/jss
+          mkdir -p /tmp/jss
+          unzip -q /tmp/base.zip -d /tmp/jss
+          cat jss-v3/chunks/part.* | base64 --decode > /tmp/overrides.zip
+          echo "8674f1e136f391428fd0fc7e372293f923015ad2bb15640a791ed8059365df38  /tmp/overrides.zip" | sha256sum -c -
+          unzip -q -o /tmp/overrides.zip -d /tmp/jss/JawaharSecureShare-v1
+          test -f /tmp/jss/JawaharSecureShare-v1/android/core/src/main/java/com/jawahar/secure/core/DirectTransfer.java
+          grep -q "io.github.webrtc-sdk:android:150.7871.01" /tmp/jss/JawaharSecureShare-v1/android/core/build.gradle
+          grep -q "kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api" /tmp/jss/JawaharSecureShare-v1/android/owner/build.gradle
+          grep -q "kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api" /tmp/jss/JawaharSecureShare-v1/android/friend/build.gradle
+          if grep -R -q "JAW-hzGeVNMgUwMO1oGMT2bBQcEBEvuLHwah4a15MEKQuSc" /tmp/jss/JawaharSecureShare-v1/android; then
+            echo "Owner token must not be in public source"
+            exit 1
+          fi
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build v3 release APKs
+        working-directory: /tmp/jss/JawaharSecureShare-v1/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :owner:assembleRelease :friend:assembleRelease -PJAWAHAR_BACKEND_URL=https://kpioireofvsaelqryeim.supabase.co/functions/v1/jawahar-api --stacktrace
+      - name: Collect unsigned APKs and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out
+          OWNER="$(find /tmp/jss/JawaharSecureShare-v1/android/owner/build/outputs/apk/release -name '*unsigned*.apk' | head -1)"
+          FRIEND="$(find /tmp/jss/JawaharSecureShare-v1/android/friend/build/outputs/apk/release -name '*unsigned*.apk' | head -1)"
+          test -n "$OWNER"
+          test -n "$FRIEND"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 "$OWNER" /tmp/out/Jawahar-Owner-v3-Fast-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 "$FRIEND" /tmp/out/Jawahar-v3-Fast-unsigned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/out/apksigner.jar
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/out/Jawahar-Owner-v3-Fast-unsigned.apk > /tmp/out/OWNER_BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/out/Jawahar-v3-Fast-unsigned.apk > /tmp/out/FRIEND_BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions /tmp/out/Jawahar-Owner-v3-Fast-unsigned.apk > /tmp/out/OWNER_PERMISSIONS.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions /tmp/out/Jawahar-v3-Fast-unsigned.apk > /tmp/out/FRIEND_PERMISSIONS.txt
+          sha256sum /tmp/out/Jawahar-Owner-v3-Fast-unsigned.apk /tmp/out/Jawahar-v3-Fast-unsigned.apk > /tmp/out/UNSIGNED_SHA256SUMS.txt
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jawahar-v3-Fast-unsigned
+          path: /tmp/out/*
+          retention-days: 7
+          if-no-files-found: error
